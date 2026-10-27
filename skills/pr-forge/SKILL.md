@@ -26,14 +26,22 @@ is GitLab.
 `:id` is the current project in `glab api`. For another project, use
 `projects/<url-encoded group%2Fname>` and `--hostname <host>`.
 
+`glab` finds the project from the remote's host. If the remote uses an SSH
+alias or an IP that differs from the host `glab` is logged in to, `:id` and
+`glab mr create` fail to find the project. Do not rewrite the remote. Use
+`projects/<encoded path>` with `--hostname`, `-R <url>`, or the MR URL.
+
+Flags differ between glab versions (`glab --version`). Check
+`glab <cmd> --help` before using a flag this table does not show.
+
 | Task | GitHub | GitLab |
 |---|---|---|
 | PR for this branch | `gh pr list --head <branch> --state all` | `glab mr list --source-branch <branch> --all` |
 | Read PR | `gh pr view <n> --json ...` | `glab api 'projects/:id/merge_requests/<iid>?include_diverged_commits_count=true'` |
-| Create | `gh pr create --title ... --body-file <f> --base <b>` | `glab mr create --title ... --description-file <f> --target-branch <b> --remove-source-branch --yes` |
+| Create | `gh pr create --title ... --body-file <f> --base <b>` | `glab mr create --title ... --description "$(cat <f>)" --target-branch <b> --remove-source-branch --yes` |
 | Use a template | `.github/PULL_REQUEST_TEMPLATE.md` | `.gitlab/merge_request_templates/<name>.md` |
-| Edit description | `gh pr edit <n> --body-file <f>` | `glab mr update <iid> --description-file <f>` |
-| Attach a screenshot | drag into the web UI | `glab mr update <iid> --attach <png>` |
+| Edit description | `gh pr edit <n> --body-file <f>` | `glab mr update <iid> --description "$(cat <f>)"` |
+| Attach a screenshot | drag into the web UI | `glab mr update <iid> --attach <png>` (glab 1.124+) |
 | Checks | `gh pr checks <n>` | `glab ci status --branch <b>`; jobs: `glab api projects/:id/pipelines/<id>/jobs` |
 | Failed job log | `gh run view <id> --log-failed` | `glab ci trace <job-id>` |
 | Retry a flaky job | `gh run rerun <id> --failed` | `glab ci retry <job-id>` |

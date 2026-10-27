@@ -70,7 +70,8 @@ path). It uses `glab api`, so glab's login is reused.
 mr-wait <iid|url> [--repo group/name] [--hostname host] [--until ready|green|any-change]
 ```
 
-Same exit codes as `pr-wait`. `ready` (default) means the head pipeline
+Pass the MR URL rather than the iid, so it works even when the remote's host
+differs from glab's. Same exit codes as `pr-wait`. `ready` (default) means the head pipeline
 succeeded, no discussion is unresolved, and `detailed_merge_status` is
 `mergeable`. `green` means the head pipeline only. Notes that start with the
 `leaving-pr-comments` callout are yours and are not reported. The user's own
