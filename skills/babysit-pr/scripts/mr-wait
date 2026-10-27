@@ -1,0 +1,330 @@
+#!/usr/bin/env python3
+"""mr-wait: watch one GitLab merge request and print one line per real event.
+
+  mr-wait <mr> [--repo group/name] [--hostname host] [--until green|ready|any-change] [--interval 30]
+
+<mr> is an MR iid or MR URL. Without --repo, the project comes from the URL or
+from the current checkout (glab's `:id`). All API calls go through `glab api`,
+so glab's authentication is reused. Stdout carries only events, one line each,
+so a monitor (Claude Code's Monitor tool) wakes the agent once per real event.
+Progress and errors that do not end the run go to stderr.
+
+--until
+  green       the head pipeline succeeded on the current head (or the project
+              has no pipeline and does not require one)
+  ready       green, no unresolved discussion, and detailed_merge_status is
+              `mergeable` (default)
+  any-change  stop after the first poll that prints an event
+
+Exit codes
+  0  the --until condition is met, or the MR merged
+  1  the condition cannot be met without action: the pipeline failed, the MR
+     needs a rebase or conflicts, waits on a human approval, is a draft, has
+     unresolved discussions, closed, or GitLab stayed unreachable
+  2  bad arguments, unknown MR, or another mr-wait already watches this MR
+
+Events
+  - the head pipeline finished (status, failed job names, link)
+  - a new note or discussion reply that is not a system note and not an
+    agent-authored comment (body starting with the `leaving-pr-comments`
+    callout)
+  - the head moved (someone pushed)
+  - the target branch moved and the new commits touch files in this MR
+  - detailed_merge_status changed to something that needs action
+  - the MR merged or closed
+
+State lives in ~/.local/state/mr-wait/. A lock makes a second watcher for the
+same MR exit with code 2.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.parse
+from pathlib import Path
+
+STATE_DIR = Path.home() / ".local" / "state" / "mr-wait"
+AGENT_CALLOUT = re.compile(r"^\s*>\s*\[!NOTE\]\s*\n\s*>\s*🤖", re.IGNORECASE)
+TERMINAL_PIPELINE = {"success", "failed", "canceled", "skipped", "manual"}
+NEEDS_ACTION = {
+    "need_rebase": "needs a rebase onto the target branch",
+    "conflict": "conflicts with the target branch",
+    "not_approved": "waits for a human approval",
+    "requested_changes": "a reviewer requested changes",
+    "draft_status": "is a draft",
+    "not_open": "is not open",
+    "blocked_status": "is blocked by another MR",
+    "broken_status": "cannot be merged (broken status)",
+}
+MAX_FAILURES = 10
+
+
+def log(msg):
+    print(msg, file=sys.stderr, flush=True)
+
+
+def event(msg):
+    print(msg, flush=True)
+
+
+class Api:
+    def __init__(self, hostname, project):
+        self.hostname = hostname
+        # `:id` lets glab resolve the project from the current checkout.
+        self.project = urllib.parse.quote(project, safe="") if project else ":id"
+
+    def get(self, path, **params):
+        endpoint = f"projects/{self.project}/{path}" if path else f"projects/{self.project}"
+        if params:
+            endpoint += "?" + urllib.parse.urlencode(params)
+        cmd = ["glab", "api", endpoint]
+        if self.hostname:
+            cmd += ["--hostname", self.hostname]
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if out.returncode != 0:
+            raise RuntimeError(out.stderr.strip() or f"glab api {endpoint} failed")
+        return json.loads(out.stdout)
+
+    def get_all(self, path):
+        items, page = [], 1
+        while True:
+            batch = self.get(path, per_page=100, page=page)
+            items += batch
+            if len(batch) < 100:
+                return items
+            page += 1
+
+    def user(self):
+        cmd = ["glab", "api", "user"] + (["--hostname", self.hostname] if self.hostname else [])
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        return json.loads(out.stdout).get("username") if out.returncode == 0 else None
+
+
+def parse_target(mr, repo):
+    m = re.match(r"https?://([^/]+)/(.+?)/-/merge_requests/(\d+)", mr)
+    if m:
+        return m.group(1), repo or m.group(2), int(m.group(3))
+    if mr.lstrip("!").isdigit():
+        return None, repo, int(mr.lstrip("!"))
+    log(f"mr-wait: cannot read MR '{mr}' (want an iid or an MR URL)")
+    sys.exit(2)
+
+
+def acquire_lock(key):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    lock = STATE_DIR / f"{key}.lock"
+    if lock.exists():
+        try:
+            pid = int(lock.read_text().strip())
+            os.kill(pid, 0)
+            log(f"mr-wait: pid {pid} already watches this MR")
+            sys.exit(2)
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass
+    lock.write_text(str(os.getpid()))
+    return lock
+
+
+def load_state(path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def mr_paths(api, iid):
+    paths = set()
+    for d in api.get_all(f"merge_requests/{iid}/diffs"):
+        paths.add(d.get("old_path"))
+        paths.add(d.get("new_path"))
+    paths.discard(None)
+    return paths
+
+
+def note_location(note):
+    pos = note.get("position") or {}
+    path = pos.get("new_path") or pos.get("old_path")
+    line = pos.get("new_line") or pos.get("old_line")
+    if path:
+        return f" {path}:{line}" if line else f" {path}"
+    return ""
+
+
+def poll(api, iid, state, me, first):
+    """Read the MR once. Return (events, mr, discussions, pipeline)."""
+    events = []
+    mr = api.get(f"merge_requests/{iid}", include_diverged_commits_count="true")
+    discussions = api.get_all(f"merge_requests/{iid}/discussions")
+
+    if mr["state"] in ("merged", "closed"):
+        events.append(f"MR !{iid} {mr['state']}: {mr['web_url']}")
+        return events, mr, discussions, None
+
+    sha = mr["sha"]
+    if state.get("sha") and state["sha"] != sha:
+        events.append(f"head moved {state['sha'][:8]} -> {sha[:8]}")
+        state.pop("pipeline_reported", None)
+    state["sha"] = sha
+
+    pipeline = mr.get("head_pipeline")
+    if pipeline and pipeline.get("sha") != sha:
+        pipeline = None  # the head pipeline has not been created for the new head yet
+    if pipeline and pipeline["status"] in TERMINAL_PIPELINE:
+        key = f"{pipeline['id']}:{pipeline['status']}"
+        if state.get("pipeline_reported") != key:
+            state["pipeline_reported"] = key
+            line = f"pipeline {pipeline['status']} on {sha[:8]}: {pipeline['web_url']}"
+            if pipeline["status"] == "failed":
+                jobs = api.get(f"pipelines/{pipeline['id']}/jobs", **{"scope[]": "failed"})
+                names = ", ".join(f"{j['name']} (job {j['id']})" for j in jobs if not j.get("allow_failure"))
+                if names:
+                    line += f" - failed: {names}"
+            events.append(line)
+
+    seen = set(state.get("seen_notes", []))
+    for d in discussions:
+        for n in d.get("notes", []):
+            if n["id"] in seen:
+                continue
+            seen.add(n["id"])
+            if first or n.get("system"):
+                continue
+            body = n.get("body") or ""
+            if AGENT_CALLOUT.match(body):
+                continue
+            author = n["author"]["username"]
+            kind = "thread" if n.get("resolvable") else "note"
+            if n.get("resolvable") and n.get("resolved"):
+                kind += " (resolved)"
+            snippet = " ".join(body.split())[:160]
+            who = f"@{author}" + (" (you)" if author == me else "")
+            events.append(f"{kind} {d['id'][:8]} from {who}{note_location(n)}: {snippet}")
+    state["seen_notes"] = sorted(seen)
+
+    target = mr["target_branch"]
+    branch = api.get(f"repository/branches/{urllib.parse.quote(target, safe='')}")
+    target_sha = branch["commit"]["id"]
+    old_target = state.get("target_sha")
+    if old_target and old_target != target_sha:
+        cmp = api.get("repository/compare", **{"from": old_target, "to": target_sha})
+        touched = {p for d in cmp.get("diffs", []) for p in (d.get("old_path"), d.get("new_path")) if p}
+        overlap = sorted(touched & mr_paths(api, iid))
+        if overlap:
+            shown = ", ".join(overlap[:5]) + (" ..." if len(overlap) > 5 else "")
+            events.append(f"{target} moved to {target_sha[:8]}; new commits touch this MR's files: {shown}")
+    state["target_sha"] = target_sha
+
+    status = mr.get("detailed_merge_status")
+    if status != state.get("merge_status") and status in NEEDS_ACTION:
+        events.append(f"merge status {status}: MR {NEEDS_ACTION[status]}")
+    state["merge_status"] = status
+
+    return events, mr, discussions, pipeline
+
+
+def unresolved(discussions):
+    return [d for d in discussions if any(n.get("resolvable") and not n.get("resolved") for n in d.get("notes", []))]
+
+
+def verdict(until, mr, discussions, pipeline, project_info, polls):
+    """Return an exit code when the run should end, else None."""
+    if mr["state"] == "merged":
+        return 0
+    if mr["state"] == "closed":
+        return 1
+    if pipeline and pipeline["status"] in ("failed", "canceled", "manual"):
+        return 1  # manual = blocked on a manual job
+    if pipeline is None and not mr.get("head_pipeline") and polls >= 10 and project_info.get("only_allow_merge_if_pipeline_succeeds"):
+        event("no pipeline on the head, but the project requires one")
+        return 1
+    status = mr.get("detailed_merge_status")
+    if status in ("need_rebase", "conflict", "draft_status", "not_open"):
+        return 1
+
+    no_ci_needed = (
+        pipeline is None
+        and not mr.get("head_pipeline")
+        and not project_info.get("only_allow_merge_if_pipeline_succeeds")
+        and polls >= 3
+    )
+    green = (pipeline is not None and pipeline["status"] in ("success", "skipped")) or no_ci_needed
+    if until == "green":
+        return 0 if green else None
+    if not green:
+        return None
+    if unresolved(discussions):
+        log(f"mr-wait: {len(unresolved(discussions))} unresolved discussion(s)")
+        return 1
+    if status == "mergeable":
+        return 0
+    if status in ("not_approved", "requested_changes", "blocked_status", "broken_status"):
+        return 1
+    return None  # checking, ci_still_running, ...
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Watch a GitLab merge request.")
+    ap.add_argument("mr")
+    ap.add_argument("--repo")
+    ap.add_argument("--hostname", help="GitLab host, when <mr> is an iid and the checkout is elsewhere")
+    ap.add_argument("--until", choices=["green", "ready", "any-change"], default="ready")
+    ap.add_argument("--interval", type=int, default=30)
+    try:
+        args = ap.parse_args()
+    except SystemExit:
+        sys.exit(2)
+
+    hostname, project, iid = parse_target(args.mr, args.repo)
+    hostname = hostname or args.hostname
+    api = Api(hostname, project)
+    try:
+        project_info = api.get("")
+    except RuntimeError as e:
+        log(f"mr-wait: {e}")
+        sys.exit(2)
+    host = urllib.parse.urlparse(project_info["web_url"]).netloc
+    key = re.sub(r"[^A-Za-z0-9_.-]", "_", f"{host}_{project_info['path_with_namespace']}_{iid}")
+    state_path = STATE_DIR / f"{key}.json"
+    lock = acquire_lock(key)
+    state = load_state(state_path)
+    first = "seen_notes" not in state  # notes that predate the first run are not news
+    me = api.user()
+    failures, polls = 0, 0
+
+    try:
+        while True:
+            try:
+                events, mr, discussions, pipeline = poll(api, iid, state, me, first)
+                failures = 0
+            except (RuntimeError, ValueError, subprocess.TimeoutExpired) as e:
+                failures += 1
+                log(f"mr-wait: read failed ({failures}/{MAX_FAILURES}): {e}")
+                if failures >= MAX_FAILURES:
+                    event("GitLab unreachable, stopped watching")
+                    sys.exit(1)
+                time.sleep(args.interval)
+                continue
+            first = False
+            polls += 1
+            state_path.write_text(json.dumps(state))
+            for e in events:
+                event(e)
+            if args.until == "any-change" and events:
+                sys.exit(0)
+            code = verdict(args.until, mr, discussions, pipeline, project_info, polls)
+            if code is not None:
+                log(f"mr-wait: done ({'met' if code == 0 else 'needs action'}), exit {code}")
+                sys.exit(code)
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        sys.exit(1)
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    main()

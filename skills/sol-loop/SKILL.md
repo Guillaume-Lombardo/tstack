@@ -32,7 +32,8 @@ Otherwise stop and ask.
 
 Find the base after `git fetch origin`:
 
-- PR: `gh pr view <n> --json baseRefName,headRefOid`. Check out the branch
+- PR: `gh pr view <n> --json baseRefName,headRefOid`. On GitLab, read
+  `target_branch` and `sha` from the MR (see `pr-forge`). Check out the branch
   only if clean. Confirm `HEAD` is the PR head, or ahead only by this
   change. Base: `git merge-base HEAD origin/<baseRefName>`.
 - Local: `git merge-base HEAD origin/<default-branch>`. No remote: a base
@@ -45,9 +46,11 @@ missing or pre-failing checks in the brief.
 
 ## 2. Start Sol
 
-In T3, call `orchestrator_capabilities`. Pick the latest Sol unless the user
-named a version. Do not hardcode an ID. Record provider, model, and effort
-only if exposed. Use `delegate_task` every round (`role: "review"`,
+In T3, call `orchestrator_capabilities`. Pick the latest Sol (`gpt-*-sol` on
+the `codex` instance) unless the user named a version. Do not hardcode an ID.
+Pass `target.options: {"reasoningEffort":"high"}`: Sol's default is `low`. Use
+`xhigh` when the budget extends to 5 rounds. Record provider, model, and
+effort only if exposed. Use `delegate_task` every round (`role: "review"`,
 `mode: "async"`). Save `taskId`. New `clientRequestId` per round.
 `childThreadId` is storage, not the next target. Do not use
 `t3_thread_send`, `create_threads`, or `t3_thread_launch` for review.
@@ -64,7 +67,7 @@ approval. On failure, cancel, verify stop, restart with the ledger.
 Round 1 brief (T3 children get no history):
 
 ```
-Review only. Do not edit, commit, push, comment on PRs, or start subagents.
+Review only. Do not edit, commit, push, comment on PRs/MRs, or start subagents.
 Repo: <abs path> Base: <sha> Intent: <intent> Out of scope: <scope> Checks: <results>
 See: git diff <base> [-- <paths>]; git status --short (read untracked).
 Read surrounding code. Find bugs, broken callers, mismatch with intent.
@@ -108,8 +111,8 @@ or budget ends. Show both sides in 2-3 lines each. The user decides.
 Budget end is not approval.
 
 Do not push during the loop. Push after agreement only if the user asked
-to push, ship, or update the PR. If you push to a PR, add above the model
-blurb:
+to push, ship, or update the PR. If you push to a PR or MR, add above the
+attribution line, in the description's language:
 
 `Reviewed with sol-loop: <N> rounds with <model>. Sol verdict: approved`.
 

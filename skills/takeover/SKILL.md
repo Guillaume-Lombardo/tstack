@@ -9,6 +9,8 @@ Take responsibility for finishing the original goal while preserving the
 original contributors' credit. Do not defend an implementation just because
 another agent already built it.
 
+"PR" includes GitLab merge requests. Use the `pr-forge` skill for commands.
+
 Read the source PR, branch, or thread, including review findings and the user's
 later corrections. Resolve the handoff to the actual code and current head,
 and account for uncommitted work. Treat the handoff as context, not proof.
@@ -21,7 +23,10 @@ PR without authorization.
 Preserve Git authorship and existing co-author trailers. Credit the original
 contributors in the PR description and link the original PR when there is one.
 If the work will be squashed, preserve human author/co-author credit in the
-merge commit too, using verified identities rather than guessed emails. Model
+merge commit too, using verified identities rather than guessed emails.
+`Co-authored-by:` trailers work on GitHub and GitLab. On GitLab, put them in
+the squash message (`--squash-message`) if the default one would drop them.
+If a repo has a CLA check, each original author must have signed it. Tell the user who has not, do not sign for them. Model
 attribution is not a substitute for contributor credit.
 
 Use `modernize` to update the continuation against its intended base and

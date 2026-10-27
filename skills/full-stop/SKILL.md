@@ -26,6 +26,10 @@ Disable existing auto-merge and remove the PR from any merge queue before
 work begins; check again before each push. Report these changes. If you
 cannot prevent automatic merging, report the blocker before proceeding.
 
+On GitLab, never run `glab mr merge`: it turns on auto-merge by default. If the
+MR has `merge_when_pipeline_succeeds: true`, cancel it with the `pr-forge`
+command. Do not pass `--auto-merge` to `glab mr create`.
+
 ## Stop at the gate
 
 Use full-send's merge gate as the readiness check. Replace its merge and
@@ -43,5 +47,6 @@ without the user. If someone else merged it, report that instead.
   needed. Follow full-send's rules for asking the user.
 
 In T3 Code, call `unwatch_pull_request` before the handoff or a question.
+Stop `mr-wait` or `pr-wait` if one is running.
 Report the PR link, final head, verdict, proof, reviewer outcome, and remaining
 risks. State whether the PR is still open and unmerged.

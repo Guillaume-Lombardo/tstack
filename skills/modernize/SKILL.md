@@ -7,6 +7,8 @@ description: >-
 
 # Modernize
 
+Works on GitHub PRs and GitLab MRs. Use the `pr-forge` skill for commands.
+
 Modernize the idea, not just the branch. A clean rebase does not prove that the
 PR still belongs in the product.
 
@@ -26,7 +28,7 @@ PR still belongs in the product.
 ## Establish the PR's intent
 
 Resolve the PR and record its URL, state, base, head repository and branch,
-current head SHA, author, checks, and review state. Read the title, body, linked
+current head SHA, author, checks (pipeline on GitLab), and review state. Read the title, body, linked
 issues, commits, review threads, and complete diff. State the smallest coherent
 goal the PR was trying to accomplish before judging its implementation.
 

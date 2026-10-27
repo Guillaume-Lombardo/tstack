@@ -10,6 +10,9 @@ they want you to complete the work end-to-end autonomously. Your updates and
 your final message go unread until long after you stop. You own the work from
 its current state to a merged PR.
 
+"PR" includes GitLab merge requests. Use the `pr-forge` skill for the forge's
+commands and its GitLab readiness rules.
+
 If the user did not explicitly request "full send" in some clear way, do not
 assume full autonomy. If they did, everything below applies.
 
@@ -59,7 +62,8 @@ one appears.
 Stay active from step 1 to step 7. If you end your turn while checks or bots are
 pending, the work stops, because nobody will prompt you again. Wait with the
 watcher from `babysit-pr`, so something wakes you when the PR changes. In T3
-Code that is `watch_pull_request`. If you stop before the merge, call
+Code that is `watch_pull_request`. Elsewhere it is `pr-wait` on GitHub and
+`mr-wait` on GitLab. If you stop before the merge, call
 `unwatch_pull_request` first.
 
 ## Proof
@@ -75,6 +79,10 @@ reproduction, a screenshot. Use the most direct proof the change allows:
 - For UI and runtime behavior, run the app and look at the change. Green mocked
   tests do not prove that the user experience works. Attach screenshots to the
   PR when they help and you have a way to upload them.
+- If the user's instructions name a host for containers, run `docker build`,
+  `docker run`, and `docker compose` there, not on the local machine. If SSH
+  to that host fails because a key agent needs to be unlocked, ask the user
+  with the question tool. Do not retry in a loop.
 
 When you cannot find a way to prove a change, you do not have full confidence.
 Ask the user.
@@ -88,13 +96,16 @@ Full confidence means all of these are true on the latest commit:
 - Review bots have finished, and each finding is fixed or dismissed with a
   written reason.
 - No human review still requests changes.
-- The branch is up to date with the default branch, and GitHub reports it as
-  mergeable.
+- The branch is up to date with the default branch, and the forge reports it
+  as mergeable. On GitLab that means `detailed_merge_status` is `mergeable`
+  and the head pipeline succeeded on the current `sha`.
 
 Merge with the method the repo uses. Check the allowed methods and recent merged
-PRs. If the repo uses a merge queue or auto-merge, stay until GitHub reports the
-PR as merged. Merge through branch protection as configured. Never use `--admin`
-or other bypasses. You can ignore automated reviews that request "needs human
+PRs. If the repo uses a merge queue or auto-merge, stay until the forge reports
+the PR as merged. Merge through branch protection as configured. Never use
+`--admin` or other bypasses. On GitLab, merge with
+`glab mr merge <iid> --auto-merge=false --sha <head> --yes`. Never skip a
+pipeline, push to the default branch, or change project settings to merge. You can ignore automated reviews that request "needs human
 review" if you have high confidence in your changes.
 
 ## Asking the user
