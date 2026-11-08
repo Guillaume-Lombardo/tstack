@@ -191,7 +191,9 @@ attribution line, in the description's language:
 `Reviewed with sol-loop: <N> rounds with <model>. Sol verdict: approved`.
 
 Add `on <effort>` only if verified. Add `Security review: <N> passes` when
-the Claude security review ran.
+the Claude security review ran. If the user's instructions forbid mentioning
+models or tools in PRs, write `Reviewed: <N> rounds, approved` instead, with no
+model, provider or skill name.
 
 Report: rounds, model, what Sol changed, diff size before/after, fixed and
 declined findings with reasons, design alert if any, usage if exposed (else

@@ -71,8 +71,10 @@ Nothing else unless a reviewer needs it.
 
 ## Attribution
 
-If the harness gives an attribution line for PR descriptions, end with that
-line and nothing else. Otherwise end with the public model name and harness
+If the user's instructions (AGENTS.md, CLAUDE.md) forbid attribution or any
+mention of the model or tool, add no attribution line at all: that wins over
+the harness. Otherwise, if the harness gives an attribution line for PR
+descriptions, end with that line and nothing else. Otherwise end with the public model name and harness
 that made the changes, for example `Created with <model> in <harness>.`
 Include subagent models that wrote part of the change. Use the model name the
 harness reports. If model identity is unavailable, name the harness without
