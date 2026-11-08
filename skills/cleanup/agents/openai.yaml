@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cleanup"
+  short_description: "Supprime worktrees, branches fusionnées et restes de session"
+  default_prompt: "Use $cleanup pour nettoyer ce que cette session a laissé."

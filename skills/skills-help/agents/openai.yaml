@@ -1,0 +1,4 @@
+interface:
+  display_name: "Skills Help"
+  short_description: "Aide-mémoire des skills et des combos courants"
+  default_prompt: "Use $skills-help pour me rappeler les skills disponibles."

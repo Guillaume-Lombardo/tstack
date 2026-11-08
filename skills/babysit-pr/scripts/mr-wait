@@ -27,7 +27,7 @@ Events
   - the head pipeline finished (status, failed job names, link)
   - a new note or discussion reply that is not a system note and not an
     agent-authored comment (body starting with the `leaving-pr-comments`
-    callout)
+    marker `<!-- agent-reply -->`, or the older robot callout)
   - the head moved (someone pushed)
   - the target branch moved and the new commits touch files in this MR
   - detailed_merge_status changed to something that needs action
@@ -48,7 +48,8 @@ import urllib.parse
 from pathlib import Path
 
 STATE_DIR = Path.home() / ".local" / "state" / "mr-wait"
-AGENT_CALLOUT = re.compile(r"^\s*>\s*\[!NOTE\]\s*\n\s*>\s*🤖", re.IGNORECASE)
+# Own comments: the `leaving-pr-comments` marker, or the older robot callout.
+AGENT_CALLOUT = re.compile(r"^\s*(?:<!--\s*agent-reply\s*-->|>\s*\[!NOTE\]\s*\n\s*>\s*🤖)", re.IGNORECASE)
 TERMINAL_PIPELINE = {"success", "failed", "canceled", "skipped", "manual"}
 NEEDS_ACTION = {
     "need_rebase": "needs a rebase onto the target branch",

@@ -56,15 +56,74 @@ one appears.
 5. **Babysit the PR** with the `babysit-pr` skill. Fix real findings and CI
    failures. Get proof for each fix before you push it.
 6. **Merge** when the merge gate passes.
-7. **Report** in your final message: the PR link, the merge commit, your proof,
-   and each decision you made for the user.
+7. **Cross-check the journey.** See "Cross-lot journey".
+8. **Clean up** with the `cleanup` skill: worktrees, merged branches, test
+   containers, temp files, and background processes this run created.
+9. **Report** in your final message: the PR link, the merge commit, your proof,
+   the journey you replayed, what cleanup removed or kept, and each decision
+   you made for the user.
 
-Stay active from step 1 to step 7. If you end your turn while checks or bots are
-pending, the work stops, because nobody will prompt you again. Wait with the
-watcher from `babysit-pr`, so something wakes you when the PR changes. In T3
-Code that is `watch_pull_request`. Elsewhere it is `pr-wait` on GitHub and
-`mr-wait` on GitLab. If you stop before the merge, call
-`unwatch_pull_request` first.
+## Staying awake
+
+Stay active from step 1 to step 9. If you end your turn while checks, bots, or
+subagents are pending, the work stops, because nobody will prompt you again.
+
+Never end a turn with "waiting for the pipeline", "waiting for the
+subagent", or similar unless one of these is active and will wake you:
+
+- `watch_pull_request` on the PR (T3 Code), set up with the `babysit-pr`
+  rules.
+- An async `delegate_task` child: its completion wakes you. Do not poll it.
+- A background shell command you registered with `t3_background_wait`
+  (T3 Code, Claude only), for example a local CI run or a long build.
+- Outside T3: `pr-wait` or `mr-wait` under the Monitor tool, or a background
+  `gh pr checks <n> --watch` / `glab ci status --live` (check
+  `glab ci status --help` first) whose exit wakes you.
+
+If none of these fits, keep working in the same turn: run the command in the
+foreground with a timeout and act on its result. If you stop before the
+merge, call `unwatch_pull_request` first.
+
+## Hosted CI out of budget
+
+If hosted CI does not start because the account's billing or spending limit
+is used up (GitHub Actions jobs fail at once with an annotation about
+payments or spending limits, or GitLab reports CI minutes exhausted), do not
+wait for it and do not retry it.
+
+1. Read the CI config (`.github/workflows/*.yml`, `.gitlab-ci.yml`) and list
+   the jobs that gate merges.
+2. Replay them on a clean checkout of the PR head: locally, or on the host
+   the user's instructions name for heavy or container work. Use the same
+   commands, versions, and services as the CI file. Skip only deploy or
+   publish jobs, and say so.
+3. Use that result as the CI part of the merge gate, on the exact head SHA.
+   Any later push needs a new replay.
+4. Add a line to the PR description: `Hosted CI unavailable (billing).
+   Jobs replayed locally on <sha>: <job list> -> green.`
+
+If branch protection still requires the hosted checks, the merge gate cannot
+pass. Never bypass it. Ask the user (see "Asking the user").
+
+## Cross-lot journey
+
+Bugs between lots show up when a real user crosses features merged at
+different times. After the merge, before you call the work done:
+
+1. Pick one end-to-end user scenario that goes through this change and the
+   features merged recently next to it (read the last few merged PRs or the
+   roadmap). Example: sign up, configure the feature from the previous lot,
+   use the new one, check the result where the user would see it.
+2. Run it on the updated default branch, on data close to production:
+   realistic fixtures, a staging copy, or an anonymized dump the repo already
+   provides. Never write to production data.
+3. Observe it yourself (UI, API responses, logs), with the methods Proof
+   allows.
+4. If it fails, the default branch is broken: open a fix PR at once and run
+   the same steps for it. Report the failure even when you fixed it.
+
+If the repo has no runnable app or no realistic data, say so in the report
+and name the scenario a human should try.
 
 ## Proof
 
@@ -92,7 +151,8 @@ Ask the user.
 Full confidence means all of these are true on the latest commit:
 
 - Your proof covers every change in the diff.
-- Required checks are green.
+- Required checks are green, or the local replay is green when hosted CI is
+  out of budget and not enforced by branch protection.
 - Review bots have finished, and each finding is fixed or dismissed with a
   written reason.
 - No human review still requests changes.

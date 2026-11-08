@@ -1,0 +1,4 @@
+interface:
+  display_name: "Status"
+  short_description: "Point d'avancement du dépôt, en lecture seule"
+  default_prompt: "Use $status: on en est où sur ce dépôt ?"

@@ -74,7 +74,7 @@ Pass the MR URL rather than the iid, so it works even when the remote's host
 differs from glab's. Same exit codes as `pr-wait`. `ready` (default) means the head pipeline
 succeeded, no discussion is unresolved, and `detailed_merge_status` is
 `mergeable`. `green` means the head pipeline only. Notes that start with the
-`leaving-pr-comments` callout are yours and are not reported. The user's own
+`leaving-pr-comments` marker (`<!-- agent-reply -->`) are yours and are not reported. The user's own
 comments are reported, marked `(you)`: treat them as review from the user.
 
 ### Running a watcher
@@ -90,6 +90,34 @@ Kill the old one only if its events do not reach you.
 
 With either watcher: when an event needs no action, end your turn without a
 message. Never post or say "still waiting".
+
+### Never end on "waiting" without a wake
+
+Before you end a turn while anything is pending (checks, bots, a subagent, a
+local build), make sure something will wake you:
+
+- `watch_pull_request` is active on the PR (T3 Code), or
+- `pr-wait` / `mr-wait` runs under the Monitor tool, or
+- an async `delegate_task` child is running (its completion wakes you), or
+- a background shell command is registered with `t3_background_wait`
+  (T3 Code, Claude only), for example `gh pr checks <n> --watch` or a local
+  CI replay.
+
+If none is active, do not end the turn with "I'll wait for the pipeline".
+Start one of them, or run the check in the foreground and act on it.
+
+### Hosted CI out of budget
+
+If hosted CI does not start because billing or the spending limit is used up
+(GitHub Actions jobs fail at once with a payments or spending-limit
+annotation, or GitLab reports CI minutes exhausted), do not wait and do not
+retry. Replay the gating jobs from the CI config on a clean checkout of the
+PR head, locally or on the host the user's instructions name. Report the
+result as the CI status of that exact SHA, and add to the PR description:
+`Hosted CI unavailable (billing). Jobs replayed locally on <sha>: <jobs> ->
+<result>.` A watcher will never report green in this state, so do not start
+one for checks; still watch for comments and conflicts. If branch protection
+requires the hosted checks, the PR cannot merge: tell the user.
 
 ## GitHub rate limits
 

@@ -30,6 +30,18 @@ On GitLab, never run `glab mr merge`: it turns on auto-merge by default. If the
 MR has `merge_when_pipeline_succeeds: true`, cancel it with the `pr-forge`
 command. Do not pass `--auto-merge` to `glab mr create`.
 
+## What still applies from full-send
+
+- **Staying awake.** Never end a turn on "waiting" without an active wake
+  mechanism, until the handoff.
+- **Hosted CI out of budget.** Replay the CI jobs locally and use that as the
+  CI part of the readiness check. Put the replay line in the PR description
+  and say in the handoff that hosted CI did not run.
+- **Cross-lot journey.** Run it on the PR branch, rebased on the latest
+  default branch, before the handoff. There is no merge to wait for.
+- **Clean up** with the `cleanup` skill before the handoff, but keep the PR
+  branch and the worktree it lives in: the user still needs them.
+
 ## Stop at the gate
 
 Use full-send's merge gate as the readiness check. Replace its merge and
@@ -48,5 +60,5 @@ without the user. If someone else merged it, report that instead.
 
 In T3 Code, call `unwatch_pull_request` before the handoff or a question.
 Stop `mr-wait` or `pr-wait` if one is running.
-Report the PR link, final head, verdict, proof, reviewer outcome, and remaining
-risks. State whether the PR is still open and unmerged.
+Report the PR link, final head, verdict, proof, reviewer outcome, the journey
+you replayed, what cleanup removed or kept, and remaining risks. State whether the PR is still open and unmerged.

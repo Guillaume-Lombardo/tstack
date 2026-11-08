@@ -1,6 +1,6 @@
 ---
 name: sol-loop
-description: Use when the user says "sol loop".
+description: Use when the user says "sol loop" or "sol-loop", or when another skill (full-send, full-stop, next-lot) asks for a Sol review loop.
 ---
 
 # sol-loop
@@ -14,15 +14,30 @@ of scope creep and don't be scared to push back.
 
 ## Budget
 
-- Default: 3 rounds total. Round 1 is full. Later rounds check only
-  changed code and open findings.
-- Extend to 5 only for security, permissions, auth, data loss, or
-  state/concurrency, while a blocker or should stays open with evidence. Or when
-  the user asks.
-- Stop early if a round returns only nits. Declined nits and comment,
-  doc, or format-only fixes need no new round.
-- One reviewer only. Sol must not start subagents or reviewers.
-- Keep a ledger: id, severity, outcome, usage if returned. Never guess it.
+Experience over many loops: round 1 almost always finds a real bug, round 2
+often does, and after round 3 only nits remain, except for security-sensitive
+code. Spend rounds accordingly.
+
+- **Round 1 is full**: the whole change, base to working tree.
+- **Round 2 and later see the delta only**: the diff since the state the
+  previous round reviewed, plus the open finding ids. Never resend the full
+  change as something to re-review, and never ask Sol to re-read the repo.
+- **Stop as soon as a round has no real blocker or should.** Nits and
+  suggestions do not earn another round. Declined nits and comment, doc, or
+  format-only fixes need no new round.
+- **Cap: 3 rounds.** Extend to 5 only when the diff touches auth, multi-tenant
+  isolation, secrets, crypto, or permissions, and a blocker or should stays
+  open with evidence. Or when the user asks.
+- **Design alert at round 3.** If round 3 findings belong to the same family
+  as earlier rounds (same heuristic, same function, the same kind of input
+  slipping through a different gap), stop. Another round will only find the
+  next case. See "Design alert".
+- **Keep rounds short.** Each brief names the exact diff and files. The
+  reviewer reads the diff and the code it directly calls or is called by,
+  nothing more.
+- One Sol reviewer per round. Sol must not start subagents or reviewers.
+- Keep a ledger: id, severity, family (a 2-4 word label for the kind of
+  problem), round, outcome, usage if returned. Never guess usage.
 
 ## 1. Scope
 
@@ -40,29 +55,39 @@ Find the base after `git fetch origin`:
   the user names, or `HEAD` for uncommitted changes only.
 
 The change is base to working tree in those paths, with untracked files.
-Use one diff command all rounds. State intent and out-of-scope in 1-2
-sentences. Run covering checks. Do not send code this change breaks. Note
-missing or pre-failing checks in the brief.
+State intent and out-of-scope in 1-2 sentences. Run covering checks. Do not
+send code this change breaks. Note missing or pre-failing checks in the brief.
+
+Classify the change as **sensitive** if the diff touches authentication,
+sessions, tenant or organization scoping, secrets or credentials, crypto, or
+permission checks. Sensitive changes get the 5-round cap, `xhigh` effort, and
+the security review below.
+
+Before each round, record the reviewed state: commit the work in progress on
+the task branch (or save `git diff <base>` to a file under `.agent-tmp/` if
+you must not commit yet). The next round's delta is computed from it.
 
 ## 2. Start Sol
 
 In T3, call `orchestrator_capabilities`. Pick the latest Sol (`gpt-*-sol` on
 the `codex` instance) unless the user named a version. Do not hardcode an ID.
-Pass `target.options: {"reasoningEffort":"high"}`: Sol's default is `low`. Use
-`xhigh` when the budget extends to 5 rounds. Record provider, model, and
-effort only if exposed. Use `delegate_task` every round (`role: "review"`,
-`mode: "async"`). Save `taskId`. New `clientRequestId` per round.
-`childThreadId` is storage, not the next target. Do not use
-`t3_thread_send`, `create_threads`, or `t3_thread_launch` for review.
+Always pass the effort explicitly, every round: Sol's default in T3 is `low`.
+Use `target.options: {"reasoningEffort":"high"}`, or `"xhigh"` for a sensitive
+change. Record provider, model, and effort only if exposed. Use
+`delegate_task` every round (`role: "review"`, `mode: "async"`). Save
+`taskId`. New `clientRequestId` per round. `childThreadId` is storage, not
+the next target. Do not use `t3_thread_send`, `create_threads`, or
+`t3_thread_launch` for review.
 
 If T3 tools are not listed, try one direct capability call. Outside T3, use
 a native Sol subagent and keep its ID. In Claude Code, use a custom subagent
 only if it is set up to run Sol. If no route runs Sol, report the blocker. Do
 not substitute a model.
 
-Do not edit scoped files while review runs. Wait for the notice. Do not
-poll or start a second reviewer. Timeout, error, or no reply is not
-approval. On failure, cancel, verify stop, restart with the ledger.
+Do not edit scoped files while review runs. Wait for the completion notice:
+an async `delegate_task` wakes you when it finishes, so end your turn instead
+of polling. Do not start a second Sol reviewer. Timeout, error, or no reply is
+not approval. On failure, cancel, verify stop, restart with the ledger.
 
 Round 1 brief (T3 children get no history):
 
@@ -70,7 +95,8 @@ Round 1 brief (T3 children get no history):
 Review only. Do not edit, commit, push, comment on PRs/MRs, or start subagents.
 Repo: <abs path> Base: <sha> Intent: <intent> Out of scope: <scope> Checks: <results>
 See: git diff <base> [-- <paths>]; git status --short (read untracked).
-Read surrounding code. Find bugs, broken callers, mismatch with intent.
+Read the diff and the code it directly calls or is called by. Do not scan the
+rest of the repo. Find bugs, broken callers, mismatch with intent.
 Skip style unless it hides a bug. Hold to the smallest change. Flag code,
 tests, or guards the intent does not need. Other paths, rare cases, small
 perf, extra compat: nits.
@@ -79,6 +105,17 @@ Reply:
 VERDICT: APPROVE or CHANGES
 S1 [blocker|should|nit] <file>:<line> <claim>. Fix: <suggestion> (stable ids)
 ```
+
+### Security review (sensitive changes only)
+
+For a sensitive change, run one Claude security review in parallel with Sol
+in round 1, and one more on the final round. Not on the rounds in between.
+Use the latest `claude-opus-*` on the `claudeAgent` instance with
+`{"effort":"high"}`, `role: "review"`, `mode: "async"`, same read-only rules.
+Brief it on the threat model only: who can call this, what crosses a trust or
+tenant boundary, where secrets flow, what a missing check would expose. Merge
+its findings into the same ledger with an `X` prefix (`X1`, `X2`). If Claude
+is not available, say so in the report; do not skip silently.
 
 ## 3. Answer findings
 
@@ -91,17 +128,54 @@ small cost is a nit, whatever label it came with.
 - Disagree: say why, with evidence (file:line, test, output).
 - Out of scope or nit: decline in one line. List as follow-up.
 
-Update the ledger. Re-run checks and `git diff --shortstat <base>`. If
-review grew the diff, cut first. Do not agree just to end the loop.
+Update the ledger, including each finding's family. Re-run checks and
+`git diff --shortstat <base>`. If review grew the diff, cut first. Do not
+agree just to end the loop.
 
 ## 4. Next round
 
-Start one only if budget remains and a blocker or should is open, behavior code
-changed, or approval does not cover the current behavior diff. Use a fresh
-`delegate_task` in T3, or follow up the saved native ID. Send the round 1 brief,
-the ledger (`fixed:` / `disagree:` / `declined:` + evidence), the same base
-diff, and the change since last round. Tell Sol: open ids and changed code only.
-Mark each old id `resolved` or `still open: <reason>`.
+Start one only if all of these hold:
+
+- budget remains (3, or 5 for sensitive),
+- a blocker or should is open, or behavior code changed since the last
+  reviewed state,
+- the design alert did not fire.
+
+Use a fresh `delegate_task` in T3, or follow up the saved native ID. Send a
+short brief: intent and out-of-scope in one line, the ledger (`fixed:` /
+`disagree:` / `declined:` + evidence), and the delta only:
+`git diff <last-reviewed-state>` (or the saved patch file). Tell Sol: review
+the delta and the open ids only, read nothing else unless the delta calls it.
+Mark each old id `resolved` or `still open: <reason>`. Same severity scale,
+same reply format.
+
+On the final round of a sensitive change, start the Claude security review
+again on the full change.
+
+## Design alert
+
+When round 3 (or later) returns findings of the same family as earlier
+rounds, the problem is the design, not the review. Typical case: a heuristic
+(text extraction, parsing free-form input, name matching) where every round
+finds the next input that slips through.
+
+Do not start another round. Write a design alert:
+
+```
+Design alert: <family>
+Rounds: <ids per round in this family>
+Likely cause: <why the approach keeps leaking, in 1-2 sentences>
+Options:
+1. <rework the approach, e.g. a parser, an explicit allowlist, a stricter input contract>
+2. <narrow the scope: support the intended cases only, document the limits, add fixtures>
+3. <ship as is with known limits listed as follow-ups>
+Recommendation: <option and why>
+```
+
+Put it in the report and, if a PR exists, in its description. Under
+`full-send` or `full-stop`: if no blocker remains in the intended case, ship
+with the alert and the limits listed; otherwise ask the user with the
+question tool, using the alert as the question.
 
 ## 5. Stop and ship
 
@@ -116,7 +190,9 @@ attribution line, in the description's language:
 
 `Reviewed with sol-loop: <N> rounds with <model>. Sol verdict: approved`.
 
-Add `on <effort>` only if verified.
+Add `on <effort>` only if verified. Add `Security review: <N> passes` when
+the Claude security review ran.
 
 Report: rounds, model, what Sol changed, diff size before/after, fixed and
-declined findings with reasons, usage if exposed (else say not), pushed or not.
+declined findings with reasons, design alert if any, usage if exposed (else
+say not), pushed or not.

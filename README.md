@@ -14,8 +14,16 @@ What this fork changes:
   changes, else the short tstack format.
 - `council` seats Claude Opus, GPT Sol, and GLM (OpenCode), with explicit
   effort. `sol-loop` runs Sol at `high` (its default is `low`).
-- `leaving-pr-comments` signs in French or English, with the name from your
-  instructions.
+- `leaving-pr-comments` signs with the name from your instructions and never
+  names a model or tool. `mr-wait` spots those comments by a hidden marker.
+- `sol-loop` reviews the delta only after round 1, stops at nits, caps at 3
+  rounds (5 for security-sensitive code), raises a design alert when the
+  same family of findings comes back, and adds a Claude security pass only
+  for sensitive changes.
+- `full-send` / `full-stop` / `babysit-pr` never end a turn on "waiting"
+  without a wake mechanism, replay CI locally when hosted CI is out of
+  budget, replay a cross-lot user journey, and clean up at the end.
+- New skills, in French: `next-lot`, `status`, `cleanup`, `skills-help`.
 - `full-send` runs containers on the host your instructions name.
 
 Personal settings (forge hosts, logins, signature name, container host) live
@@ -40,10 +48,15 @@ not.
 | `modernize` | "modernize" | Rebases an old PR and decides if it should still exist. |
 | `leaving-pr-comments` | (automatic) | Formats comments that an agent posts on your behalf. |
 | `pr-forge` | (automatic) | GitHub/GitLab command map and GitLab merge rules. |
+| `next-lot` | "réalise le lot suivant" | Takes the next roadmap item, scopes it, builds it in a worktree, then `sol-loop` and `full-stop` (or `full-send`). |
+| `status` | "on en est où ?" | Read-only project status: roadmap, open PRs and CI, active T3 threads, releases, next action. |
+| `cleanup` | "nettoie tout" | Removes merged worktrees and branches, test containers, temp files, and stray processes. Keeps anything unpushed. |
+| `skills-help` | "quels skills ?" | Lists installed skills and common combos. |
 
 Some skills call others. Install the ones they need too:
 
-- `full-send` uses `sol-loop`, `file-pr`, and `babysit-pr`.
+- `full-send` uses `sol-loop`, `file-pr`, `babysit-pr`, and `cleanup`.
+- `next-lot` uses `sol-loop`, `full-stop` or `full-send`, and `takeover`.
 - `full-stop` uses `full-send`.
 - `takeover` uses `modernize`, `file-pr`, `babysit-pr`, and `leaving-pr-comments`.
 - `file-pr`, `babysit-pr`, and `modernize` use `leaving-pr-comments`.

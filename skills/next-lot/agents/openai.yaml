@@ -1,0 +1,4 @@
+interface:
+  display_name: "Next Lot"
+  short_description: "Cadre, implémente et livre le prochain lot de la roadmap"
+  default_prompt: "Use $next-lot to réaliser le lot suivant de la roadmap, puis sol-loop et full-stop."
