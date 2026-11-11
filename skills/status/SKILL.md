@@ -52,5 +52,10 @@ Local : <worktrees / branches non poussées / changements non commités>
 **Prochaine action recommandée** : <une action, la plus utile>
 ```
 
+Toutes les heures et dates sont en heure de Paris (`Europe/Paris`), jamais en
+UTC : convertis les horodatages `…Z` ou epoch renvoyés par la forge, la CI et
+T3 avant de les écrire (`HH:MM` aujourd'hui, `JJ/MM HH:MM` sinon). Une
+dernière activité récente s'écrit plutôt en relatif (« il y a 12 min »).
+
 Omets une section vide plutôt que d'écrire « aucun ». Ne raconte pas comment
 tu as collecté.
