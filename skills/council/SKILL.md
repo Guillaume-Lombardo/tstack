@@ -14,12 +14,13 @@ request, use those. Otherwise the council is:
 | --- | --- | --- | --- |
 | Claude Opus | `claudeAgent` | latest `claude-opus-*` | `{"effort":"high"}` |
 | GPT Sol | `codex` | latest `gpt-*-sol` | `{"reasoningEffort":"high"}` |
-| GLM | `opencode` | latest full `glm-*`, never `*-flash` (OpenCode Go via LiteLLM) | `{"variant":"high"}` |
+| GLM | `opencode` | latest `litellm/go-glm-*` (OpenCode Go), never `*-flash` | `{"variant":"high"}` |
 
 In T3 Code, call `orchestrator_capabilities` and resolve each family to the
-newest model ID it lists. Do not hardcode IDs. For GLM, search `glm` and take the
-newest model without `flash` in its ID; if only a Flash model is listed, report
-the seat as missing instead of using it. Pass the options explicitly:
+newest model ID it lists. Do not hardcode IDs. For GLM, search `go-glm` and take
+the newest model whose ID starts with `litellm/go-` and has no `flash`; other
+`glm-*` IDs are not on the OpenCode Go plan. If none is listed, report the seat
+as missing instead of using another GLM. Pass the options explicitly:
 Sol's default reasoning effort is `low`. Start one `delegate_task` per seat in
 parallel (`role: "review"`, `mode: "async"`), and give each round a new
 `clientRequestId`. Elsewhere, use the harness's subagent tools.
