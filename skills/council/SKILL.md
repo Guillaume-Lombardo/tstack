@@ -17,9 +17,9 @@ request, use those. Otherwise the council is:
 | Gemini Neon | `antigravity` | latest `gemini-*-neon` | `{"thought_level":"high"}` |
 
 In T3 Code, call `orchestrator_capabilities` and resolve each family to the
-newest model ID it lists. Do not hardcode IDs. For Gemini Neon, call it with
-`search: "neon"` and take the newest model of the `antigravity` instance whose
-ID ends with `-neon`; if none is listed, report the seat as missing instead of
+newest model ID it lists. Do not hardcode IDs. For Gemini Neon, take from that
+same response the newest model of the `antigravity` instance whose ID ends with
+`-neon`; if none is listed, report the seat as missing instead of
 using another Gemini model. Gemini Neon reads images: for a visual review, put
 the absolute paths of the screenshots or mockups in its `task`. Pass the options
 explicitly: Sol's default reasoning effort is `low`, and Gemini Neon's default
