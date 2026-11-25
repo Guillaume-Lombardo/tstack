@@ -14,16 +14,18 @@ request, use those. Otherwise the council is:
 | --- | --- | --- | --- |
 | Claude Opus | `claudeAgent` | latest `claude-opus-*` | `{"effort":"high"}` |
 | GPT Sol | `codex` | latest `gpt-*-sol` | `{"reasoningEffort":"high"}` |
-| GLM | `opencode` | latest `litellm/go-glm-*` (OpenCode Go), never `*-flash` | `{"variant":"high"}` |
+| Gemini Neon | `antigravity` | latest `gemini-*-neon` | `{"thought_level":"high"}` |
 
 In T3 Code, call `orchestrator_capabilities` and resolve each family to the
-newest model ID it lists. Do not hardcode IDs. For GLM, search `go-glm` and take
-the newest model whose ID starts with `litellm/go-` and has no `flash`; other
-`glm-*` IDs are not on the OpenCode Go plan. If none is listed, report the seat
-as missing instead of using another GLM. Pass the options explicitly:
-Sol's default reasoning effort is `low`. Start one `delegate_task` per seat in
-parallel (`role: "review"`, `mode: "async"`), and give each round a new
-`clientRequestId`. Elsewhere, use the harness's subagent tools.
+newest model ID it lists. Do not hardcode IDs. For Gemini Neon, call it with
+`search: "neon"` and take the newest model of the `antigravity` instance whose
+ID ends with `-neon`; if none is listed, report the seat as missing instead of
+using another Gemini model. Gemini Neon reads images: for a visual review, put
+the absolute paths of the screenshots or mockups in its `task`. Pass the options
+explicitly: Sol's default reasoning effort is `low`, and Gemini Neon's default
+`thought_level` differs between machines. Start one `delegate_task` per seat in
+parallel (`role: "review"`, `mode: "async"`), each with its own
+`clientRequestId`, new for every round. Elsewhere, use the harness's subagent tools.
 
 If a seat's provider instance is disabled or its family is missing, report it
 instead of substituting. Ask the user whether to continue with two seats.
@@ -52,7 +54,7 @@ Rounds: 2
 | --- | --- | --- |
 | Claude Opus | 7/10 | 9/10 |
 | GPT Sol | 8/10 | 10/10 |
-| GLM | 7/10 | 9/10 |
+| Gemini Neon | 7/10 | 9/10 |
 ```
 
 If a delegate gives no score, write `no score`. Do not invent one.
